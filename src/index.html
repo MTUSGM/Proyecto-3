@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101418">
+  <title>Contraltura · Proyecto 3</title>
+  <style>/* STYLE */</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span> Proyecto 3</div>
+    <span class="top-note">LABORATORIO DE SIMULACIÓN</span>
+  </header>
+  <main>
+    <section class="intro">
+      <div>
+        <p class="kicker">APRENDIZAJE POR REFUERZO</p>
+        <h1>Contraltura<span>.</span></h1>
+        <p>Elige qué entrenar en cada equipo y pon a prueba cómo se apilan 20 cuadrados para alcanzar la meta.</p>
+      </div>
+      <div class="settings">
+        <label for="goal">Altura objetivo</label>
+        <div class="goal-control"><input id="goal" type="number" min="3" max="10" value="8" required> <span>cuadrados</span></div>
+      </div>
+    </section>
+
+    <section class="board" aria-label="Arenas de simulación">
+      <article class="arena cyan">
+        <header><div><span class="team-dot"></span><h2>Equipo A</h2></div><span>20 cuadrados</span></header>
+        <canvas width="880" height="692" data-canvas="0" role="img" aria-label="Arena del equipo A"></canvas>
+        <footer><div><span>ALTURA MÁXIMA</span><strong data-peak="0">—</strong></div><div><span>TIEMPO A LA META</span><strong data-time="0">—</strong></div></footer>
+      </article>
+      <article class="arena orange">
+        <header><div><span class="team-dot"></span><h2>Equipo B</h2></div><span>20 cuadrados</span></header>
+        <canvas width="880" height="692" data-canvas="1" role="img" aria-label="Arena del equipo B"></canvas>
+        <footer><div><span>ALTURA MÁXIMA</span><strong data-peak="1">—</strong></div><div><span>TIEMPO A LA META</span><strong data-time="1">—</strong></div></footer>
+      </article>
+    </section>
+
+    <section class="config" aria-labelledby="attr-title">
+      <div class="config-heading">
+        <div><h2 id="attr-title">Atributos entrenables</h2>
+          <p>Asigna tres atributos al equipo A. Los otros tres pasan al equipo B. Cada equipo conserva el valor inicial en los atributos que no entrena.</p></div>
+        <div class="allocation" aria-live="polite"><span class="tag cyan" id="count-a"></span><span class="tag orange" id="count-b"></span></div>
+      </div>
+      <div class="attributes" id="attributes"></div>
+      <div class="actions">
+        <button id="train" class="primary" type="button">Entrenar equipos</button>
+        <button id="replay" type="button" disabled>Repetir animación</button>
+        <button id="baseline" type="button" disabled>Ver intento inicial</button>
+      </div>
+      <progress id="progress" value="0" max="44" hidden></progress>
+      <p id="status" role="status">Listo para entrenar.</p>
+    </section>
+    <details id="results" hidden>
+      <summary>Valores del entrenamiento</summary>
+      <div class="table-wrap"><table><thead><tr><th scope="col">Atributo</th><th scope="col">Inicial</th><th scope="col">Equipo A</th><th scope="col">Equipo B</th></tr></thead><tbody id="values"></tbody></table></div>
+      <p>El programa prueba ajustes de los atributos asignados y conserva la combinación con mayor recompensa media en dos escenarios. La recompensa considera la altura estable, el tiempo que se mantiene la pila y la rapidez con que se alcanza la meta. La animación usa una tercera distribución inicial, igual para ambos equipos.</p>
+    </details>
+  </main>
+  <script id="matter">/* MATTER */</script>
+  <script id="physics">/* PHYSICS */</script>
+  <script>/* APP */</script>
+</body>
+</html>
