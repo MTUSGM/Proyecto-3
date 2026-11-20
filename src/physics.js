@@ -6,10 +6,11 @@ const SIZE = 15;
 const CENTER = WIDTH / 2;
 const STEPS = 840;
 const HZ = 60;
+const TRACE_INTERVAL = 7;
 const ATTRIBUTES = [
   ['jump', 'Impulso de salto', 'Velocidad inicial al saltar desde un apoyo.', 2.5, 6.5, 3.7],
   ['drive', 'Empuje lateral', 'Aceleración al acercarse a la torre.', 0.11, 0.65, 0.26],
-  ['grip', 'Agarre al trepar', 'Empuje vertical al estar junto a otro cuadrado.', 0.26, 0.88, 0.42],
+  ['grip', 'Agarre al trepar', 'Fuerza del único impulso en el aire junto a la torre.', 0.26, 0.88, 0.42],
   ['brake', 'Frenado', 'Cuánto se reduce la velocidad cerca del punto de aterrizaje.', 0.10, 0.64, 0.27],
   ['balance', 'Estabilidad', 'Fuerza con que los cuadrados ya apilados corrigen su posición.', 0.018, 0.13, 0.045],
   ['recovery', 'Recuperación', 'Pausa en fotogramas entre saltos.', 7, 30, 19],
@@ -43,7 +44,7 @@ function createArena(settings, seed, goal) {
     });
     Body.setMass(body, 0.3);
     Body.setInertia(body, Infinity);
-    return { body, side, lastJump: -60, stable: 0 };
+    return { body, side, lastJump: -60, boostAvailable: false, stable: 0 };
   });
   Composite.add(engine.world, [...terrain, ...units.map(unit => unit.body)]);
   let tick = 0;
@@ -75,18 +76,20 @@ function createArena(settings, seed, goal) {
       const landing = above || (Math.abs(x - target.x) < SIZE - 1.4 && y < target.y - SIZE * 0.8);
       move(body, landing ? target.x : edge, settings.drive, 4.1);
       const foot = { x: x, y: y + SIZE / 2 + 1.8 };
-      const grounded = Math.abs(body.velocity.y) < 0.75 &&
+      const grounded = body.velocity.y >= -0.05 && body.velocity.y < 0.75 &&
         Query.point([terrain[0], ...stacked.map(unit => unit.body)], foot).length > 0;
       const adjacent = stacked.some(unit => {
         const dx = Math.abs(x - unit.body.position.x);
         return dx >= SIZE - 1.5 && dx < SIZE + 3 && Math.abs(y - unit.body.position.y) < SIZE * 0.82;
       });
+      if (grounded) climber.boostAvailable = false;
       if (grounded && !landing && Math.abs(x - edge) < 19 && tick - climber.lastJump >= settings.recovery) {
         Body.setVelocity(body, { x: body.velocity.x, y: -settings.jump });
         climber.lastJump = tick;
-      }
-      if (adjacent && !landing && body.velocity.y > -4.3) {
-        Body.applyForce(body, body.position, { x: 0, y: -body.mass * settings.grip / 277.78 });
+        climber.boostAvailable = true;
+      } else if (!grounded && climber.boostAvailable && adjacent && !landing && body.velocity.y > -4.3) {
+        Body.setVelocity(body, { x: body.velocity.x, y: -(4 + 25 * settings.grip) });
+        climber.boostAvailable = false;
       }
       if (landing && Math.abs(x - target.x) < 3.2 && Math.abs(y - target.y + SIZE) < 2.1 &&
           Math.abs(body.velocity.y - top.body.velocity.y) < 0.45) {
@@ -134,21 +137,33 @@ function createArena(settings, seed, goal) {
   };
 }
 
-function episode(settings, seed, goal) {
+function episode(settings, seed, goal, frames) {
   const arena = createArena(settings, seed, goal);
-  for (let tick = 0; tick < STEPS; tick += 1) arena.step();
+  if (frames) frames.push({ squares: arena.frame(), score: arena.result() });
+  for (let tick = 1; tick <= STEPS; tick += 1) {
+    arena.step();
+    if (frames && (tick % TRACE_INTERVAL === 0 || tick === STEPS)) {
+      frames.push({ squares: arena.frame(), score: arena.result() });
+    }
+  }
   return arena.result();
 }
 
 // Episodic reinforcement learning via direct policy search. Only selected
 // dimensions of the shared controller are explored. Every trial uses the same seeds.
-function train(indices, goal, seed, rounds, report) {
+function* train(indices, goal, seed, rounds) {
   const evolve = rng(seed ^ 0x715ac3);
   const scenarios = [seed ^ 341, seed ^ 793];
-  const evaluate = parameters => scenarios.reduce((sum, scenario) =>
-    sum + episode(parameters, scenario, goal).reward, 0) / scenarios.length;
+  function evaluate(parameters) {
+    const frames = [];
+    const shown = episode(parameters, scenarios[0], goal, frames);
+    const other = episode(parameters, scenarios[1], goal);
+    return { frames, reward: (shown.reward + other.reward) / 2 };
+  }
   let best = { ...BASE };
-  let bestReward = evaluate(best);
+  const initial = evaluate(best);
+  let bestReward = initial.reward;
+  yield initial.frames;
   for (let run = 1; run <= rounds; run += 1) {
     const candidate = { ...best };
     const global = run % 5 === 0 || run < 5;
@@ -159,12 +174,12 @@ function train(indices, goal, seed, rounds, report) {
         best[key] + (evolve() * 2 - 1) * (max - min) * radius;
       candidate[key] = clamp(value, min, max);
     }
-    const reward = evaluate(candidate);
+    const { frames, reward } = evaluate(candidate);
     if (reward > bestReward) {
       best = candidate;
       bestReward = reward;
     }
-    report(run);
+    yield frames;
   }
   return { best };
 }

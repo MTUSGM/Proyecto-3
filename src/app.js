@@ -7,6 +7,7 @@
   const format = value => number.format(value);
   const SEED = 10493;
   const ROUNDS = 22;
+  const TRAINING_SPEED = 12;
   const selection = new Set([0, 1, 2]);
   const teams = ['A', 'B'];
   const colors = ['#64ded2', '#ffad72'];
@@ -19,8 +20,9 @@
   const metric = selector => [...document.querySelectorAll(selector)];
   const heights = metric('[data-peak]');
   const times = metric('[data-time]');
+  const roundLabels = metric('[data-round]');
 
-  function draw(ctx, arena, goal, color) {
+  function draw(ctx, squares, goal, color) {
     ctx.setTransform(2, 0, 0, 2, 0, 0);
     ctx.fillStyle = '#101820';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -66,7 +68,7 @@
     ctx.fillStyle = color;
     ctx.fillText('META ' + goal, WIDTH - 64, yGoal - 8);
 
-    for (const [x, y, active, stacked] of arena.frame()) {
+    for (const [x, y, active, stacked] of squares) {
       ctx.globalAlpha = active || stacked ? 1 : 0.62;
       ctx.fillStyle = color;
       ctx.fillRect(x - SIZE / 2, y - SIZE / 2, SIZE, SIZE);
@@ -79,10 +81,17 @@
 
   const goalValue = () => inputs.goal.validity.valid ? inputs.goal.valueAsNumber : 8;
 
+  function renderFrame(team, goal, squares, score) {
+    draw(canvases[team], squares, goal, colors[team]);
+    heights[team].textContent = format(score.peak);
+    times[team].textContent = score.firstGoal === null ? '—' : format(score.firstGoal / HZ) + ' s';
+  }
+
   function resetView() {
     cancelAnimationFrame(animation);
+    animation = 0;
     const goal = goalValue();
-    canvases.forEach((ctx, team) => draw(ctx, createArena(BASE, SEED, goal), goal, colors[team]));
+    canvases.forEach((ctx, team) => draw(ctx, createArena(BASE, SEED, goal).frame(), goal, colors[team]));
     heights.forEach(node => { node.textContent = '—'; });
     times.forEach(node => { node.textContent = '—'; });
   }
@@ -171,12 +180,7 @@
         tick += 1;
       }
       const scores = summaries();
-      canvases.forEach((ctx, team) => {
-        draw(ctx, arenas[team], goal, colors[team]);
-        heights[team].textContent = format(scores[team].peak);
-        times[team].textContent = scores[team].firstGoal === null ? '—' :
-          format(scores[team].firstGoal / HZ) + ' s';
-      });
+      arenas.forEach((arena, team) => renderFrame(team, goal, arena.frame(), scores[team]));
       if (tick < STEPS) {
         animation = requestAnimationFrame(frame);
         return;
@@ -198,11 +202,14 @@
 
   function startTraining() {
     invalidate();
+    const goal = goalValue();
     const workerCode = ['matter', 'physics'].map(id => select(id).textContent).join('\n') +
       `\n self.onmessage = ({ data: { groups, goal, seed, rounds } }) => {
-        const profiles = groups.map((indices, team) =>
-          train(indices, goal, seed, rounds, current => postMessage({ done: team * rounds + current })));
-        postMessage({ profiles });
+        const trainers = groups.map(indices => train(indices, goal, seed, rounds));
+        for (let run = 0; run <= rounds; run += 1) {
+          postMessage({ run, traces: trainers.map(trainer => trainer.next().value) });
+        }
+        postMessage({ profiles: trainers.map(trainer => trainer.next().value) });
       };`;
     const url = URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' }));
     try {
@@ -215,34 +222,71 @@
     }
     updateControls();
     progress.hidden = false;
+    progress.max = ROUNDS;
     progress.value = 0;
-    status.textContent = 'Probando combinaciones en las dos arenas…';
+    status.textContent = 'Preparando el entrenamiento…';
+    roundLabels.forEach(node => { node.textContent = 'Preparando intentos…'; });
+    document.querySelector('.board').scrollIntoView();
     const groups = [[], []];
     ATTRIBUTES.forEach((_, index) => groups[selection.has(index) ? 0 : 1].push(index));
+    const queue = [];
+    let attempt;
+    let startedAt;
+    let profiles;
 
     function finish() {
+      cancelAnimationFrame(animation);
+      animation = 0;
       worker.terminate();
       worker = null;
       progress.hidden = true;
+      roundLabels.forEach(node => { node.textContent = COUNT + ' cuadrados'; });
       updateControls();
     }
+
+    function showTraining(now) {
+      animation = 0;
+      if (!attempt) {
+        attempt = queue.shift();
+        if (!attempt) {
+          if (!profiles) return;
+          finish();
+          learned = profiles.map(({ best }) => best);
+          inputs.replay.disabled = false;
+          inputs.baseline.disabled = false;
+          showValues(profiles);
+          play(learned);
+          return;
+        }
+        startedAt = now;
+        const label = attempt.run === 0 ? 'Valores iniciales' : 'Entrenamiento · ' + attempt.run + '/' + ROUNDS;
+        status.textContent = label;
+        roundLabels.forEach(node => { node.textContent = label; });
+      }
+
+      const ticks = (now - startedAt) * HZ * TRAINING_SPEED / 1000;
+      attempt.traces.forEach((trace, team) => {
+        const index = ticks >= STEPS ? trace.length - 1 : Math.floor(ticks / TRACE_INTERVAL);
+        const { squares, score } = trace[index];
+        renderFrame(team, goal, squares, score);
+      });
+      if (ticks >= STEPS) {
+        progress.value = attempt.run;
+        attempt = null;
+      }
+      animation = requestAnimationFrame(showTraining);
+    }
+
     worker.onerror = () => {
       finish();
       status.textContent = 'El entrenamiento se interrumpió. Puedes volver a iniciarlo.';
     };
     worker.onmessage = ({ data }) => {
-      if (!data.profiles) {
-        progress.value = data.done;
-        return;
-      }
-      finish();
-      learned = data.profiles.map(({ best }) => best);
-      inputs.replay.disabled = false;
-      inputs.baseline.disabled = false;
-      showValues(data.profiles);
-      play(learned);
+      if (data.profiles) profiles = data.profiles;
+      else queue.push(data);
+      if (!animation) animation = requestAnimationFrame(showTraining);
     };
-    worker.postMessage({ groups, goal: goalValue(), seed: SEED, rounds: ROUNDS });
+    worker.postMessage({ groups, goal, seed: SEED, rounds: ROUNDS });
   }
 
   inputs.goal.addEventListener('input', () => { invalidate(); updateControls(); });
