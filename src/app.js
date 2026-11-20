@@ -7,7 +7,7 @@
   const format = value => number.format(value);
   const SEED = 10493;
   const ROUNDS = 22;
-  const TRAINING_SPEED = 12;
+  const TRAINING_SPEED = 6;
   const selection = new Set([0, 1, 2]);
   const teams = ['A', 'B'];
   const colors = ['#64ded2', '#ffad72'];

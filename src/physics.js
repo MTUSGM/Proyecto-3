@@ -8,12 +8,12 @@ const STEPS = 840;
 const HZ = 60;
 const TRACE_INTERVAL = 7;
 const ATTRIBUTES = [
-  ['jump', 'Impulso de salto', 'Velocidad inicial al saltar desde un apoyo.', 2.5, 6.5, 3.7],
-  ['drive', 'Empuje lateral', 'Aceleración al acercarse a la torre.', 0.11, 0.65, 0.26],
-  ['grip', 'Agarre al trepar', 'Fuerza del único impulso en el aire junto a la torre.', 0.26, 0.88, 0.42],
-  ['brake', 'Frenado', 'Cuánto se reduce la velocidad cerca del punto de aterrizaje.', 0.10, 0.64, 0.27],
-  ['balance', 'Estabilidad', 'Fuerza con que los cuadrados ya apilados corrigen su posición.', 0.018, 0.13, 0.045],
-  ['recovery', 'Recuperación', 'Pausa en fotogramas entre saltos.', 7, 30, 19],
+  ['jump', 'Impulso de salto', 'Velocidad inicial al saltar desde un apoyo.', 1.6, 6.5, 1.6],
+  ['drive', 'Empuje lateral', 'Aceleración al acercarse a la torre.', 0.08, 0.65, 0.08],
+  ['grip', 'Agarre al trepar', 'Fuerza del único impulso en el aire junto a la torre.', 0.17, 0.88, 0.17],
+  ['brake', 'Frenado', 'Cuánto se reduce la velocidad cerca del punto de aterrizaje.', 0.01, 0.64, 0.013],
+  ['balance', 'Estabilidad', 'Fuerza con que los cuadrados ya apilados corrigen su posición.', 0.012, 0.13, 0.012],
+  ['recovery', 'Recuperación', 'Pausa en fotogramas entre saltos.', 7, 30, 30],
 ];
 const BASE = Object.fromEntries(ATTRIBUTES.map(([key,,,,,value]) => [key,value]));
 const clamp = (x, low, high) => Math.min(high, Math.max(low, x));
