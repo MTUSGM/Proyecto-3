@@ -16,8 +16,8 @@ mayor recompensa media en dos escenarios reproducibles. La recompensa combina
 altura máxima apoyada, altura estable media y tiempo hasta la meta. La animación
 evalúa ambos equipos con una tercera condición inicial común. El intento inicial usa
 los seis valores base en ambos equipos. Los cuadrados tienen el mismo tamaño y masa,
-con rotación bloqueada, y avanzan por turnos. Las colisiones y la gravedad se resuelven
-con Matter.js 0.20.0 (MIT, ver `src/MATTER-LICENSE`).
+con rotación bloqueada, y avanzan simultáneamente. Matter.js 0.20.0 resuelve
+las colisiones y la gravedad (MIT, ver `src/MATTER-LICENSE`).
 
 ## Vercel
 

@@ -38,17 +38,17 @@ function createArena(settings, seed, goal) {
   ];
   const units = Array.from({ length: COUNT }, (_, i) => {
     const side = i % 2 ? 1 : -1;
-    const x = i === 0 ? CENTER : CENTER + side * (31 + Math.floor((i - 1) / 2) * 17 + random() * 2);
+    const x = i === 0 ? CENTER - 2 : CENTER + side * (31 + Math.floor((i - 1) / 2) * 17 + random() * 2);
     const body = Bodies.rectangle(x, FLOOR - SIZE / 2 - 0.5, SIZE, SIZE, {
       friction: 0.22, frictionAir: 0.077, restitution: 0.025,
     });
     Body.setMass(body, 0.3);
     Body.setInertia(body, Infinity);
-    return { body, side, lastJump: -60, boostAvailable: false, stable: 0 };
+    return { body, side, stacked: i === 0, lastJump: -60, boostAvailable: false, stable: 0 };
   });
-  Composite.add(engine.world, [...terrain, ...units.map(unit => unit.body)]);
+  const bodies = units.map(unit => unit.body);
+  Composite.add(engine.world, [...terrain, ...bodies]);
   let tick = 0;
-  let active = 1;
   let peak = 1;
   let supportHeight = 1;
   let firstGoal = null;
@@ -62,28 +62,28 @@ function createArena(settings, seed, goal) {
   }
 
   function step() {
-    const climber = units[active];
-    const stacked = units.slice(0, active);
+    const stacked = units.filter(unit => unit.stacked);
     const top = stacked.reduce((highest, unit) => unit.body.position.y < highest.body.position.y ? unit : highest);
+    const target = top.body.position;
     for (const unit of stacked) move(unit.body, CENTER, settings.balance, 1.25);
 
-    if (climber) {
+    for (const climber of units) {
+      if (climber.stacked) continue;
       const { body, side } = climber;
       const { x, y } = body.position;
-      const target = top.body.position;
       const above = y < target.y - SIZE - 0.7;
-      const edge = target.x + side * (SIZE + 0.4);
+      const edge = CENTER + side * (SIZE + 0.4);
       const landing = above || (Math.abs(x - target.x) < SIZE - 1.4 && y < target.y - SIZE * 0.8);
       move(body, landing ? target.x : edge, settings.drive, 4.1);
-      const foot = { x: x, y: y + SIZE / 2 + 1.8 };
+      const foot = { x, y: y + SIZE / 2 + 1.8 };
       const grounded = body.velocity.y >= -0.05 && body.velocity.y < 0.75 &&
-        Query.point([terrain[0], ...stacked.map(unit => unit.body)], foot).length > 0;
+        (foot.y >= FLOOR || Query.point(bodies, foot).length > 0);
       const adjacent = stacked.some(unit => {
         const dx = Math.abs(x - unit.body.position.x);
         return dx >= SIZE - 1.5 && dx < SIZE + 3 && Math.abs(y - unit.body.position.y) < SIZE * 0.82;
       });
       if (grounded) climber.boostAvailable = false;
-      if (grounded && !landing && Math.abs(x - edge) < 19 && tick - climber.lastJump >= settings.recovery) {
+      if (grounded && !landing && Math.abs(x - edge) < 30 && tick - climber.lastJump >= settings.recovery) {
         Body.setVelocity(body, { x: body.velocity.x, y: -settings.jump });
         climber.lastJump = tick;
         climber.boostAvailable = true;
@@ -91,23 +91,20 @@ function createArena(settings, seed, goal) {
         Body.setVelocity(body, { x: body.velocity.x, y: -(4 + 25 * settings.grip) });
         climber.boostAvailable = false;
       }
-      if (landing && Math.abs(x - target.x) < 3.2 && Math.abs(y - target.y + SIZE) < 2.1 &&
-          Math.abs(body.velocity.y - top.body.velocity.y) < 0.45) {
-        climber.stable += 1;
-        if (climber.stable >= 10) active += 1;
-      } else {
-        climber.stable = 0;
-      }
     }
 
     Engine.update(engine, 1000 / HZ);
     tick += 1;
     // Confirm a continuous stack with a path of physical supports down to the floor.
-    const order = units.map(unit => unit.body).sort((a, b) => b.position.y - a.position.y);
+    const order = [...units].sort((a, b) => b.body.position.y - a.body.position.y);
     const supported = [];
     let current = 1;
-    for (const body of order) {
+    for (const unit of order) {
+      const { body } = unit;
       const { x, y } = body.position;
+      if (unit !== units[0] && (Math.abs(x - CENTER) > SIZE / 2 || y > FLOOR - SIZE)) unit.stacked = false;
+      const previousStable = unit.stable;
+      unit.stable = 0;
       if (Math.abs(body.velocity.y) >= 0.7) continue;
       let level = FLOOR - y < SIZE / 2 + 2 ? 1 : 0;
       for (const other of supported) {
@@ -118,6 +115,10 @@ function createArena(settings, seed, goal) {
       if (level === 0) continue;
       supported.push({ x, y, level });
       current = Math.max(current, level);
+      if (level >= 2 && Math.abs(x - CENTER) < 3.2) {
+        unit.stable = previousStable + 1;
+        if (unit.stable >= 10) unit.stacked = true;
+      }
     }
     // Require two consecutive observations before recording the top height.
     const confirmed = Math.min(current, supportHeight);
@@ -133,7 +134,7 @@ function createArena(settings, seed, goal) {
 
   return {
     step, result,
-    frame: () => units.map(({ body }, i) => [body.position.x, body.position.y, i === active, i < active]),
+    frame: () => units.map(({ body, stacked }) => [body.position.x, body.position.y, !stacked, stacked]),
   };
 }
 
